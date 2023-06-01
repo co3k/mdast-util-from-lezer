@@ -1,5 +1,5 @@
 {
-  "name": "mdast-util-from-lezer",
+  "name": "mdast-util-from-lezer-markdown",
   "private": true,
   "version": "0.0.0",
   "type": "module",
