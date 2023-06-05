@@ -8,6 +8,7 @@ import { Node as UnistNode, Parent } from "unist";
 
 interface Node extends UnistNode {
   data: { from: number, to: number };
+  children?: Node[];
 }
 
 export const fromLezer = (source: string, tree: Tree) => {
@@ -23,8 +24,17 @@ function getChildrenNodes(source: string, cursor: TreeCursor): Node[] {
       children.push(convertNode(source, cursor));
     } while (cursor.nextSibling());
     cursor.parent();
-  }
 
+    const lastChild = children[children.length - 1];
+    if (lastChild.data.to < cursor.to) {
+      const textCursor = cursor.node.cursor();
+      textCursor.from = lastChild.data.to;
+      children.push(convertText(source, textCursor));
+    }
+  } else {
+    children.push(convertText(source, cursor));
+  }
+  
   return children;
 }
 
@@ -127,8 +137,8 @@ function findChildNodeByType(source: string, cursor: TreeCursor, type: string): 
   return getChildrenNodes(source, cursor).find(node => node.type === type);
 }
 
-function convertLezerNode(type: string, cursor: TreeCursor): Node {
-  return { type: `Lezer${type}`, data: {from: cursor.from, to: cursor.to} };
+function convertLezerNode(source: string, cursor: TreeCursor): Node {
+  return { type: `Lezer${cursor.type.name}`, children: getChildrenNodes(source, cursor), data: {from: cursor.from, to: cursor.to} };
 }
 
 function convertDocument(source: string, cursor: TreeCursor): Parent & Node {
@@ -229,6 +239,6 @@ function convertURL(source: string, cursor: TreeCursor): Text & Node {
 }
 
 function convertText(source: string, cursor: TreeCursor): Text & Node {
-  const value = source.slice(cursor.from, cursor.to);
+  const value = source.slice(cursor.from, cursor.to).trim();
   return { type: "text", value, data: {from: cursor.from, to: cursor.to} };
 }
