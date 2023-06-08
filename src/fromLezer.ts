@@ -18,8 +18,9 @@ export const fromLezer = (source: string, tree: Tree) => {
 
 function getChildrenNodes(source: string, cursor: TreeCursor): Node[] {
   const children: Node[] = [];
+  let leadingWhitespace = true;
 
-    if (cursor.firstChild()) {
+  if (cursor.firstChild()) {
     do {
       // Check if there is text between the previous node and the current cursor position
       const prevNodeEnd = children.length > 0 ? children[children.length - 1].data.to : cursor.from;
@@ -47,22 +48,20 @@ function getChildrenNodes(source: string, cursor: TreeCursor): Node[] {
     children.push(convertText(source, cursor));
   }
 
-
-  for (let i = children.length - 1; i >= 0; i--) {
-    const child = children[i];
+  // Remove leading and trailing whitespace from text nodes
+  children.forEach((child, index) => {
     if (child.type === "text") {
-      child.value = child.value.replace(/^\s+/, "");
-      break;
+      if (leadingWhitespace) {
+        child.value = child.value.replace(/^\s+/, "");
+        leadingWhitespace = false;
+      }
+      if (index === children.length - 1) {
+        child.value = child.value.replace(/\s+$/, "");
+      }
+    } else {
+      leadingWhitespace = false;
     }
-  }
-
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
-    if (child.type === "text") {
-      child.value = child.value.replace(/^\s+/, "");
-      break;
-    }
-  }
+  });
 
   return children.filter((child) => child.type !== "text" || child.value !== "");
 }
