@@ -22,7 +22,6 @@ function getChildrenNodes(source: string, cursor: TreeCursor): Node[] {
 
   if (cursor.firstChild()) {
     do {
-      // Check if there is text between the previous node and the current cursor position
       const prevNodeEnd = children.length > 0 ? children[children.length - 1].data.to : cursor.from;
       if (prevNodeEnd < cursor.from) {
         const textCursor = cursor.node.cursor();
@@ -31,12 +30,10 @@ function getChildrenNodes(source: string, cursor: TreeCursor): Node[] {
         children.push(convertText(source, textCursor));
       }
 
-      // Convert the child node and add it to the children array
       children.push(convertNode(source, cursor));
     } while (cursor.nextSibling());
     cursor.parent();
 
-    // Add a text node after the last child if there is text remaining
     const lastChildEnd = children[children.length - 1].data.to;
     if (lastChildEnd < cursor.to) {
       const textCursor = cursor.node.cursor();
@@ -48,22 +45,21 @@ function getChildrenNodes(source: string, cursor: TreeCursor): Node[] {
     children.push(convertText(source, cursor));
   }
 
-  // Remove leading and trailing whitespace from text nodes
-  children.forEach((child, index) => {
+  return children.filter((child) => {
     if (child.type === "text") {
+      const textNode = child as Text & Node;
+
       if (leadingWhitespace) {
-        child.value = child.value.replace(/^\s+/, "");
+        textNode.value = textNode.value.replace(/^\s+/, "");
         leadingWhitespace = false;
       }
-      if (index === children.length - 1) {
-        child.value = child.value.replace(/\s+$/, "");
+      if (children.indexOf(child) === children.length - 1) {
+        textNode.value = textNode.value.replace(/\s+$/, "");
       }
-    } else {
-      leadingWhitespace = false;
+      return textNode.value !== "";
     }
+    return true;
   });
-
-  return children.filter((child) => child.type !== "text" || child.value !== "");
 }
 
 function convertNode(source: string, cursor: TreeCursor): Node {
@@ -227,7 +223,7 @@ function convertLink(source: string, cursor: TreeCursor): Link & Node {
   // Extract URL between the third and fourth LezerLinkMark nodes
   const urlStart = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > linkChildrenEnd) + 1;
   const urlEnd = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > urlStart);
-  const url = allChildren.slice(urlStart, urlEnd).map(child => child.value).join('');
+  const url = allChildren.slice(urlStart, urlEnd).map(child => (child.type === "text") ? (child as Node & Text).value : "").join('');
 
   const titleNode = findChildNodeByType(source, cursor, "LezerLinkTitle");
   let title = titleNode ? extractTextContent(source, titleNode.data) : undefined;
@@ -264,12 +260,12 @@ function convertImage(source: string, cursor: TreeCursor): Image & Node {
 
   const altStart = allChildren.findIndex(child => child.type === 'LezerLinkMark') + 1;
   const altEnd = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > altStart);
-  const alt = allChildren.slice(altStart, altEnd).map(child => child.value).join('');
+  const alt = allChildren.slice(altStart, altEnd).map(child => (child.type === "text") ? (child as Node & Text).value : "").join('');
 
 
   const urlStart = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > altEnd) + 1;
   const urlEnd = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > urlStart);
-  const url = allChildren.slice(urlStart, urlEnd).map(child => child.value).join('');
+  const url = allChildren.slice(urlStart, urlEnd).map(child => (child.type === "text") ? (child as Node & Text).value : "").join('');
   return { type: "image", url, title, alt, data: {from: cursor.from, to: cursor.to} };
 }
 
