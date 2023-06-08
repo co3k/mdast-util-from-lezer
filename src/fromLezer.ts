@@ -19,23 +19,52 @@ export const fromLezer = (source: string, tree: Tree) => {
 function getChildrenNodes(source: string, cursor: TreeCursor): Node[] {
   const children: Node[] = [];
 
-  if (cursor.firstChild()) {
+    if (cursor.firstChild()) {
     do {
+      // Check if there is text between the previous node and the current cursor position
+      const prevNodeEnd = children.length > 0 ? children[children.length - 1].data.to : cursor.from;
+      if (prevNodeEnd < cursor.from) {
+        const textCursor = cursor.node.cursor();
+        textCursor.from = prevNodeEnd;
+        textCursor.to = cursor.from;
+        children.push(convertText(source, textCursor));
+      }
+
+      // Convert the child node and add it to the children array
       children.push(convertNode(source, cursor));
     } while (cursor.nextSibling());
     cursor.parent();
 
-    const lastChild = children[children.length - 1];
-    if (lastChild.data.to < cursor.to) {
+    // Add a text node after the last child if there is text remaining
+    const lastChildEnd = children[children.length - 1].data.to;
+    if (lastChildEnd < cursor.to) {
       const textCursor = cursor.node.cursor();
-      textCursor.from = lastChild.data.to;
+      textCursor.from = lastChildEnd;
+      textCursor.to = cursor.to;
       children.push(convertText(source, textCursor));
     }
   } else {
     children.push(convertText(source, cursor));
   }
-  
-  return children;
+
+
+  for (let i = children.length - 1; i >= 0; i--) {
+    const child = children[i];
+    if (child.type === "text") {
+      child.value = child.value.replace(/^\s+/, "");
+      break;
+    }
+  }
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (child.type === "text") {
+      child.value = child.value.replace(/^\s+/, "");
+      break;
+    }
+  }
+
+  return children.filter((child) => child.type !== "text" || child.value !== "");
 }
 
 function convertNode(source: string, cursor: TreeCursor): Node {
@@ -122,7 +151,7 @@ function isStaticPhrasingContent(node: Node): node is StaticPhrasingContent & No
 }
 
 function isListItem(node: Node): node is ListItem & Node {
-  return node.type === "ListItem";
+  return node.type === "listItem";
 }
 
 function isBlockContent(node: Node): node is BlockContent & Node {
@@ -178,7 +207,8 @@ function convertList(source: string, cursor: TreeCursor, listType: "bullet" | "o
   const value = extractTextContent(source, {from: cursor.from, to: cursor.to});
   const start = listType === "ordered" ? parseInt(value, 10) : undefined;
   const ordered = listType === "ordered";
-  const listItem = getChildrenNodes(source, cursor).filter(isListItem);
+  const children = getChildrenNodes(source, cursor);
+  const listItem = children.filter(isListItem);
 
   return { type: "list", ordered, start, children: listItem, data: {from: cursor.from, to: cursor.to} };
 }
@@ -188,21 +218,59 @@ function convertListItem(source: string, cursor: TreeCursor): ListItem & Node {
 }
 
 function convertLink(source: string, cursor: TreeCursor): Link & Node {
-  const urlNode = findChildNodeByType(source, cursor, "URL");
-  const url = urlNode ? extractTextContent(source, urlNode.data) : "";
-  const titleNode = findChildNodeByType(source, cursor, "LinkTitle")
-  const title = titleNode ? extractTextContent(source, titleNode.data) : undefined;
-  const children = getChildrenNodes(source, cursor).filter(isStaticPhrasingContent);
-  return { type: "link", url, title, children, data: {from: cursor.from, to: cursor.to} };
+  const allChildren = getChildrenNodes(source, cursor);
+
+  // Extract link children between the first and second LezerLinkMark nodes
+  const linkChildrenStart = allChildren.findIndex(child => child.type === 'LezerLinkMark') + 1;
+  const linkChildrenEnd = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > linkChildrenStart);
+  const children = allChildren.slice(linkChildrenStart, linkChildrenEnd).filter(isStaticPhrasingContent);
+
+  // Extract URL between the third and fourth LezerLinkMark nodes
+  const urlStart = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > linkChildrenEnd) + 1;
+  const urlEnd = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > urlStart);
+  const url = allChildren.slice(urlStart, urlEnd).map(child => child.value).join('');
+
+  const titleNode = findChildNodeByType(source, cursor, "LezerLinkTitle");
+  let title = titleNode ? extractTextContent(source, titleNode.data) : undefined;
+  if (title) {
+    const singleQuotes = /^'(.*)'$/;
+    const doubleQuotes = /^"(.*)"$/;
+
+    if (singleQuotes.test(title)) {
+      title = title.replace(singleQuotes, '$1');
+    } else if (doubleQuotes.test(title)) {
+      title = title.replace(doubleQuotes, '$1');
+    }
+  }
+
+  return { type: 'link', url, title, children, data: { from: cursor.from, to: cursor.to } };
+
 }
 
 function convertImage(source: string, cursor: TreeCursor): Image & Node {
-  const urlNode = findChildNodeByType(source, cursor, "URL");
-  const url = urlNode ? extractTextContent(source, urlNode.data) : "";
-  const titleNode = findChildNodeByType(source, cursor, "LinkTitle")
-  const title = titleNode ? extractTextContent(source, titleNode.data) : undefined;
-  const altNode = findChildNodeByType(source, cursor, "LinkLabel");
-  const alt = altNode ? extractTextContent(source, altNode.data) : undefined;
+  const allChildren = getChildrenNodes(source, cursor);
+
+  const titleNode = findChildNodeByType(source, cursor, "LezerLinkTitle");
+  let title = titleNode ? extractTextContent(source, titleNode.data) : undefined;
+  if (title) {
+    const singleQuotes = /^'(.*)'$/;
+    const doubleQuotes = /^"(.*)"$/;
+
+    if (singleQuotes.test(title)) {
+      title = title.replace(singleQuotes, '$1');
+    } else if (doubleQuotes.test(title)) {
+      title = title.replace(doubleQuotes, '$1');
+    }
+  }
+
+  const altStart = allChildren.findIndex(child => child.type === 'LezerLinkMark') + 1;
+  const altEnd = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > altStart);
+  const alt = allChildren.slice(altStart, altEnd).map(child => child.value).join('');
+
+
+  const urlStart = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > altEnd) + 1;
+  const urlEnd = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > urlStart);
+  const url = allChildren.slice(urlStart, urlEnd).map(child => child.value).join('');
   return { type: "image", url, title, alt, data: {from: cursor.from, to: cursor.to} };
 }
 
