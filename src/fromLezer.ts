@@ -215,12 +215,10 @@ function convertListItem(source: string, cursor: TreeCursor): ListItem & Node {
 function convertLink(source: string, cursor: TreeCursor): Link & Node {
   const allChildren = getChildrenNodes(source, cursor);
 
-  // Extract link children between the first and second LezerLinkMark nodes
   const linkChildrenStart = allChildren.findIndex(child => child.type === 'LezerLinkMark') + 1;
   const linkChildrenEnd = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > linkChildrenStart);
   const children = allChildren.slice(linkChildrenStart, linkChildrenEnd).filter(isStaticPhrasingContent);
 
-  // Extract URL between the third and fourth LezerLinkMark nodes
   const urlStart = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > linkChildrenEnd) + 1;
   const urlEnd = allChildren.findIndex((child, index) => child.type === 'LezerLinkMark' && index > urlStart);
   const url = allChildren.slice(urlStart, urlEnd).map(child => (child.type === "text") ? (child as Node & Text).value : "").join('');
